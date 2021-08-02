@@ -1,0 +1,118 @@
+<template>
+  <div class="homebox">
+      <!-- 头部 -->
+      <div class="top">
+      <div class="box">
+        <div class="login1"><img :src="logo" class="img1"/></div>   
+             <div class="span">智慧低代码开发平台&ensp;<i class="el-icon-link"></i>
+        </div>      
+     </div>
+      </div>
+      <div class="bottom">
+          <!-- 左侧导航栏 -->
+          <div class="left">
+               <div class="container">
+                    <el-row class="main-part">
+                    <el-col :span="5" class="title-col">
+                        <!-- 实现菜单多级分类 -->
+                        <el-menu
+                        @open="handleOpen"
+                        @close="handleClose"
+                        default-active="1-1-1-1"
+                        background-color="#fff"
+                        text-color="#000"
+                        active-text-color="#000"
+                        >
+                        <!-- 引入组件 -->
+                        <menu-tree :navList="navList"></menu-tree>
+                        </el-menu>
+               
+                </div>
+          </div>
+          <div class="right">
+              <!-- 二级导航 -->
+              <router-view/>
+          </div>
+      </div>
+  </div>
+</template>
+<script>
+import MenuTree from '../../components/NavList.vue'
+import navList from '../../data/NavList'
+import logo from '@/assets/logo.png'
+export default {
+
+    data() {
+        return {
+            navList,      	
+            logo: logo,
+        }
+    },
+
+    components:{
+        MenuTree
+    }
+}
+</script>
+
+<style lang='scss' scoped>
+.homebox{
+    width: 100%;
+    height: 100%;
+    .top{
+        width: 100%;
+        height: 5%;
+        background: black;
+        color: white;
+        padding-left: 5px;
+        font-size: 17px;
+    .box{
+         width: 300px;
+         height:50px;
+         border:solid 1px rgb(38, 27, 27); 
+   
+        .login1{
+             width: 30px;
+             height: 20px;
+        }
+        .img1{
+            width: 30px;
+            height: 30px;
+            line-height: 50px;  
+            margin-top: 10px;  
+            float: left;   
+        }
+        .span{
+            float: right;
+            line-height:5px;  
+            width:265px;
+            height: 30px;
+            border:solid 2px rgb(9, 8, 9);
+            padding-bottom: -5px;
+        }
+      }
+    }
+    .bottom{
+        width: 100%;
+        height: 92%;
+        display: flex;
+        justify-content: center;
+        .left{
+            width: 15%;
+            background-color: rgba(43, 47, 48, 0.965);
+            overflow: hidden;
+            .el-menu{
+                width: 100%;
+                height: 100%;
+                .el-menu-item{
+                    min-width: 100px !important;
+                    width: 100% !important;
+                }
+            }
+        }
+        .right{
+            width: 85%;
+        }
+    }
+}
+</style>

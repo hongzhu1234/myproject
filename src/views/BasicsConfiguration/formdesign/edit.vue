@@ -1,0 +1,337 @@
+<template>
+  <div class="createPost-container">
+    <el-container style="height: 100%;">
+      <el-header style="padding: 0;height: 42px;">
+        <sticky :className="'sub-navbar '">
+          <div class="filter-container">
+            <el-button v-loading="loading" size="mini" class="filter-item" style="margin-left: 10px;" @click="submitForm">保存
+            </el-button>
+          </div>
+        </sticky>
+      </el-header>
+      <el-main style="padding:0;height: calc(100% - 42px);">
+        <el-container style="height: 100%;">
+          <el-aside style="background: #fff;">
+            <el-form class="form-container" :model="postForm" :rules="rules" ref="postForm" label-position="top">
+              <div class="createPost-main-container" style="margin: 0;height: 100%;">
+                <el-form-item prop="name">
+                  <MDinput name="name" v-model="postForm.name" required :maxlength="100">
+                    标题
+                  </MDinput>
+                </el-form-item>
+
+                <el-form-item label="摘要" label-position="top">
+                  <el-input type="textarea" :rows="6" placeholder="请输入内容" v-model="postForm.description">
+                  </el-input>
+                  <span class="word-counter" v-show="contentShortLength">{{contentShortLength}}字</span>
+                </el-form-item>
+
+                <el-form-item label="表单类型" label-position="top">
+                  <el-select v-model="postForm.frmType" placeholder="" style="width: 100%;">
+                    <el-option label="可拖拽动态表单" :value=2></el-option>
+                    <el-option label="动态表单" :value=0></el-option>
+                    <el-option label="自定义开发页面" :value=1></el-option>
+                  </el-select>
+
+                  <el-select style="margin-top: 10px;width: 100%;" v-model="postForm.webId" v-if="postForm.frmType == 1" placeholder="请选择系统内置的页面">
+                    <el-option label="请假条" value='FrmLeaveReq'></el-option>
+                    <el-option label="因公外出单" value='BaWeiGoOutOnBusiness'></el-option>
+                    <el-option label="异常考勤情况说明" value='BaWeiAbnormalAttendanceInstruction'></el-option>
+                  </el-select>
+                </el-form-item>
+              </div>
+            </el-form>
+          </el-aside>
+          <el-main style="padding:0;">
+            <div class="editor-container" style="height: 100%;" v-if="postForm.frmType === 0 || postForm.frmType === 2">
+              <FormContainer ref="contentDataForm" :edit-info="editInfo" v-if="postForm.frmType === 2"></FormContainer>
+              <template v-if="postForm.frmType === 0">
+                <Ueditor ref="ue" v-bind:content="postForm.content" :formType="postForm.frmType" v-bind:fileds="postForm.fields" @ready="ueReady"></Ueditor>
+              </template>
+            </div>
+
+            <el-card class="box-card" v-if="postForm.frmType == 1">
+              <component v-bind:is="postForm.webId != '' && postForm.webId +'Add'"></component>
+            </el-card>
+          </el-main>
+        </el-container>
+      </el-main>
+    </el-container>
+  </div>
+</template>
+
+<script>
+  import MDinput from '@/components/titleControl'         //引用左侧标题组件
+  
+   import Ueditor from '@/components/Ueditor'             //引用动态表单组件
+  import Sticky from '@/components/Sticky' // 粘性header组件
+   import FormContainer from '@/components/Formcreated/index'   //引用可拖拽动态表单组件
+   import * as forms from '@/api/forms'
+  import { mapGetters, mapActions } from 'vuex'
+
+  import axios from "@/router/axios";
+  //import {  postUrl } from '@/router/CRUD'
+  const defaultForm = {
+    //id: undefined,
+    id: '',
+    description: '',
+    webId: '', // 用户开发的页面ID
+    frmType: 2, // 表单类型，默认为0动态表单，1为用户开发的页面
+    name: '',
+    fields: 0, // 字段个数
+    delete: 0, // 删除标记
+    disabled: 0,
+    contentData: '', // 表单中的控件属性描述
+    contentParse: '', // 表单控件位置模板
+    content: '' // 未处理的HTML
+  }
+
+  export default {
+    name: 'form-detail',
+    components: {
+      MDinput,
+       Sticky,
+       Ueditor,
+       FormContainer
+    },
+    props: {
+      isEdit: {
+        type: Boolean,
+        default: false
+      }
+    },
+    data() {
+      const validateRequire = (rule, value, callback) => {
+        if (value === '') {
+          this.$message({
+            message: rule.field + '为必传项',
+            type: 'error'
+          })
+        } else {
+          callback()
+        }
+      }
+      return {
+        postForm: Object.assign({}, defaultForm),
+        loading: false,
+        rules: {
+          name: [{
+            validator: validateRequire, trigger: 'blur'
+          }]
+        }
+      }
+    },
+    computed: {
+      ...mapGetters(['defaultorgid', 'formDetails', 'addFormDetail']),
+      contentShortLength() {
+        return this.postForm && this.postForm.description ? this.postForm.description.length : 0
+      },
+      editInfo() {
+        return this.postForm.contentData && JSON.parse(this.postForm.contentData) || {}
+      }
+    },
+    beforeDestroy() {
+      if (this.postForm.frmType === 0) { // 动态表单需要获取ue中的值
+        this.postForm = Object.assign(this.postForm, this.$refs.ue.getObj())
+      } else if (this.postForm.frmType === 2) {
+        this.postForm.contentData = JSON.stringify(this.$refs.contentDataForm.handleGenerateJson())
+      }
+      if(!this.postForm.id){
+        this.saveAddFormDetails(this.postForm)
+        return
+      }
+      let data = {}
+      data[this.postForm.id] = this.postForm
+      this.saveFormDetails(data)
+    },
+    mounted() {
+      this.init();
+      this.Load();//第一次加载
+    },
+
+    methods: {
+      Load(){
+      const form = this.$route.params.forms;
+      console.log(this.$route.params.forms);
+      this.postForm.id = form.Id;
+      //标题
+      this.postForm.name = form.Name;
+      this.postForm.createDate=form.CreateDate;
+      //摘要
+      this.postForm.description = form.Description;
+      //表单类型
+      this.postForm.frmType = form.FrmType;
+      //系统内置的页面
+      this.postForm.webId = form.WebId;
+      //表单
+      this.postForm.contentData = form.ContentData;
+      //转换格式并反填表单
+      this.$refs.contentDataForm.handleGenerateJson(JSON.parse(form.ContentData)); 
+      },
+      ...mapActions(['saveFormDetails', 'saveAddFormDetails', 'updateIsRender']),
+      init() {
+        this.postForm.frmType = this.$route.query['frmType'] !== undefined ? this.$route.query['frmType'] : 2
+        if (!this.isEdit) {
+          this.postForm = Object.assign({}, this.addFormDetail || defaultForm)
+        } else {
+          // ueditor需要准备好了调用数据，frmtype为2时，不调用ueditor
+          if (Number(this.postForm.frmType) !== 0) {
+            const id = this.$route.params && this.$route.params.id
+            this.postForm = this.formDetails[id]
+          }
+        }
+      },
+      ueReady(index) { // ueditor准备好了，来数据吧
+      this.postForm.contentDetil = index;
+      // ueditor准备好了，来数据吧
+      },
+      fetchData(id) {
+        console.log(id);
+        forms.get(id).then(response => {
+          this.postForm = response.result
+        }).catch(err => {
+          console.log(err)
+        })
+      },
+      //保存(添加表单)
+      submitForm() {
+        alert(JSON.stringify(this.postForm));
+
+      //判断显示的页面
+      if (this.postForm.frmType === 0) {
+        // 动态表单需要获取ue中的值
+        //this.postForm = this.postForm.contentDetil;
+        this.postForm = Object.assign(this.postForm, this.$refs.ue.getObj());
+      } else if (this.postForm.frmType === 2) {
+
+        this.postForm.contentData = JSON.stringify(
+          this.$refs.contentDataForm.handleGenerateJson()
+        );
+      }
+      axios({
+        url: "/api/Form/EditForm",
+        method: "put",
+        data: this.postForm,
+      }).then((res) => {
+        if (res.data.data > 0) {
+          this.$message.success("编辑成功");
+          this.$router.push({ path: "/basics/formdesign" });
+        } else {
+          this.$message.error("编辑失败");
+        }
+      });
+
+
+      }    
+    }
+  }
+
+</script>
+
+<style rel="stylesheet/scss" lang="scss" scoped>
+  @import "src/styles/mixin.scss";
+
+  .createPost-container {
+    position: relative;
+    height: 100%;
+    overflow:hidden;
+    margin: 0;
+
+    .createPost-main-container {
+      margin: 10px;
+      background-color: white;
+      padding: 10px;
+      padding-top: 0;
+
+      .postInfo-container {
+        position: relative;
+        @include clearfix;
+        margin-bottom: 10px;
+
+        .postInfo-container-item {
+          float: left;
+        }
+      }
+
+      .editor-container {
+        min-height: 500px;
+        margin: 0 0 30px;
+
+        .editor-upload-btn-container {
+          text-align: right;
+          margin-right: 10px;
+
+          .editor-upload-btn {
+            display: inline-block;
+          }
+        }
+      }
+    }
+// .main-view{
+//   height: 100%;
+// }
+    .word-counter {
+      width: 40px;
+      position: absolute;
+      right: -10px;
+      top: 0px;
+    }
+  }
+
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--<template>
+  <form-detail :is-edit='true'></form-detail>
+</template>
+
+<script>
+import FormDetail from './components/insertInfo.vue'
+
+export default {
+  name: 'editForm',
+  components: { FormDetail },
+  methods: {
+  }
+}
+</script>-->
+
